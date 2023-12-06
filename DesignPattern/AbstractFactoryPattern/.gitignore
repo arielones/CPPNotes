@@ -1,9 +1,0 @@
-Debug/
-Release/
-*.sdf
-*.opensdf
-*.suo
-.idea
-build/
-*~
-.DS_Store
