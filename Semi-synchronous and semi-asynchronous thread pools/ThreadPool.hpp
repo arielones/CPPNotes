@@ -1,9 +1,11 @@
-#include<list>
-#include<thread>
-#include<functional>
-#include<memory>
+#include <list>
+#include <thread>
+#include <memory>
 #include <atomic>
-#include "SyncQueue.hpp"
+#include <future>
+#include <iostream>
+#include <functional>
+#include "common/SyncQueue.hpp"
 using namespace std;
 
 const int MaxTaskCount = 100;
@@ -38,6 +40,49 @@ public:
     {
         m_queue.Put(task);
     }
+
+    //提交要由线程池异步执行的函数
+    template <typename F,typename... Args>
+    auto SubmitFuture(F&& f,Args&&... args) -> std::future<decltype(f(args...))>
+    {
+        //创建一个绑定参数的函数用于执行
+        std::function<decltype(f(args..))())> func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);    //连接函数和参数定义，特殊函数类型，避免左右值错误
+
+        //将其封装到共享指针中，以便能够复制构造
+        auto task_ptr = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
+
+        //将任务打包转换为void function
+        Task warpper_func = [task_ptr]()
+        {
+            (*task_ptr)();
+        }
+
+        //压入安全队列
+        AddTask(std::move(warpper_func));
+
+        //返回先前注册的任务指针
+        return task_ptr->get_future();
+    }
+
+    template<class F, class... Args>
+    void SubmitVoid(F&& f, Args&&... args)
+    {
+        //创建一个绑定参数的函数用于执行
+        std::function<Task> func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);    //连接函数和参数定义，特殊函数类型，避免左右值错误
+
+        //将其封装到共享指针中，以便能够复制构造
+        auto task_ptr = std::make_shared<Task>(func);
+
+        //将任务打包转换为void function
+        Task warpper_func = [task_ptr]()
+        {
+            (*task_ptr)();
+        }
+
+        //压入安全队列
+        AddTask(std::move(func));
+    }
+
 private:
     void Start(int numThreads)
     {
